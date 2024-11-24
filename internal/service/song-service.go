@@ -6,6 +6,7 @@ import (
 	"github.com/TakuroBreath/song-library/internal/domain/models"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 type SongDetail struct {
@@ -15,24 +16,24 @@ type SongDetail struct {
 }
 
 func (s *SongService) GetSongVerses(group, song string, limit, offset int) ([]string, error) {
-	return s.storage.GetSongWithPagination(group, song, limit, offset)
+	return s.Storage.GetSongWithPagination(group, song, limit, offset)
 }
 
 func (s *SongService) GetSongs(filters map[string]interface{}, limit, offset int) ([]*models.Song, error) {
-	return s.storage.GetFilteredSongs(filters, limit, offset)
+	return s.Storage.GetFilteredSongs(filters, limit, offset)
 }
 
-func (s *SongService) UpdateSong(id int, group, song, releaseDate, text, link string) error {
-	return s.storage.UpdateSong(id, group, song, releaseDate, text, link)
+func (s *SongService) UpdateSong(id int, group, song, releaseDate, text, link *string) error {
+	return s.Storage.UpdateSong(id, group, song, releaseDate, text, link)
 }
 
 func (s *SongService) DeleteSong(group, song string) error {
-	return s.storage.DeleteSong(group, song)
+	return s.Storage.DeleteSong(group, song)
 }
 
 func (s *SongService) AddSongWithAPI(group, song string) (int, error) {
-	url := fmt.Sprintf("%s/info?group=%s&song=%s", s.apiURL, group, song)
-	resp, err := http.Get(url)
+	reqUrl := fmt.Sprintf("%s/info?group=%s&song=%s", s.apiURL, url.QueryEscape(group), url.QueryEscape(song))
+	resp, err := http.Get(reqUrl)
 	if err != nil {
 		return 0, fmt.Errorf("failed to call external API: %w", err)
 	}
@@ -52,10 +53,14 @@ func (s *SongService) AddSongWithAPI(group, song string) (int, error) {
 		return 0, fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	songID, err := s.storage.AddSong(group, song, songDetail.ReleaseDate, songDetail.Text, songDetail.Link)
+	songID, err := s.Storage.AddSong(group, song, songDetail.ReleaseDate, songDetail.Text, songDetail.Link)
 	if err != nil {
 		return 0, fmt.Errorf("failed to save song in repository: %w", err)
 	}
 
 	return songID, nil
+}
+
+func (s *SongService) GetID(group, song string) (int, error) {
+	return s.Storage.GetID(group, song)
 }

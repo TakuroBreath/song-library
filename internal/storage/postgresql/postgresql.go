@@ -49,14 +49,18 @@ func (s *Storage) AddSong(group, song, releaseDate, text, link string) (int, err
 	return id, nil
 }
 
-func (s *Storage) UpdateSong(id int, group, song, releaseDate, text, link string) error {
+func (s *Storage) UpdateSong(id int, group, song *string, releaseDate *string, text *string, link *string) error {
 	const op = "storage.postgresql.UpdateSong"
 
 	_, err := s.db.Exec(`
-       						UPDATE songs 
-       						SET "group" = $1, song = $2, release_date = $3, text = $4, link = $5
-       						WHERE id = $6
-   							`, group, song, releaseDate, text, link, id)
+        UPDATE songs 
+        SET "group" = COALESCE($1, "group"), 
+            song = COALESCE($2, song),
+            release_date = COALESCE($3, release_date), 
+            text = COALESCE($4, text),
+            link = COALESCE($5, link)
+        WHERE id = $6
+    `, group, song, releaseDate, text, link, id)
 
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
@@ -95,27 +99,48 @@ func (s *Storage) GetSongWithPagination(group, song string, limit, offset int) (
 	var text string
 
 	err := s.db.QueryRow(`
-		SELECT text 
-		FROM songs 
-		WHERE "group" = $1 AND song = $2
-	`, group, song).Scan(&text)
+        SELECT text 
+        FROM songs 
+        WHERE "group" = $1 AND song = $2
+    `, group, song).Scan(&text)
 
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	// Заменяем экранированные переводы строк на реальные
+	text = strings.ReplaceAll(text, "\\n", "\n")
+
+	// Разделяем текст на куплеты
 	verses := strings.Split(text, "\n\n")
 
-	if offset >= len(verses) {
-		return nil, nil
+	// Если получился только один куплет, пробуем разбить по одинарным переводам строк
+	if len(verses) <= 1 {
+		verses = strings.Split(text, "\n")
+	}
+
+	// Очищаем пустые строки и форматируем текст
+	var cleanVerses []string
+	for _, verse := range verses {
+		verse = strings.TrimSpace(verse)
+		if verse != "" {
+			// Заменяем переводы строк на пробелы для форматированного вывода
+			formattedVerse := strings.ReplaceAll(verse, "\n", " ")
+			cleanVerses = append(cleanVerses, formattedVerse)
+		}
+	}
+
+	// Проверяем границы пагинации
+	if offset >= len(cleanVerses) {
+		return []string{}, nil
 	}
 
 	end := offset + limit
-	if end > len(verses) {
-		end = len(verses)
+	if end > len(cleanVerses) {
+		end = len(cleanVerses)
 	}
 
-	return verses[offset:end], nil
+	return cleanVerses[offset:end], nil
 }
 
 func (s *Storage) GetFilteredSongs(filters map[string]interface{}, limit, offset int) ([]*models.Song, error) {
@@ -126,10 +151,21 @@ func (s *Storage) GetFilteredSongs(filters map[string]interface{}, limit, offset
 	var args []interface{}
 	argIndex := 1
 
+	// Карта для правильного экранирования имен полей
+	fieldNames := map[string]string{
+		"group":        `"group"`,
+		"song":         "song",
+		"release_date": "release_date",
+		"text":         "text",
+		"link":         "link",
+	}
+
 	for field, value := range filters {
-		conditions = append(conditions, fmt.Sprintf(`%s = $%d`, field, argIndex))
-		args = append(args, value)
-		argIndex++
+		if quotedField, ok := fieldNames[field]; ok {
+			conditions = append(conditions, fmt.Sprintf(`%s = $%d`, quotedField, argIndex))
+			args = append(args, value)
+			argIndex++
+		}
 	}
 
 	if len(conditions) > 0 {
@@ -157,4 +193,22 @@ func (s *Storage) GetFilteredSongs(filters map[string]interface{}, limit, offset
 	}
 
 	return songs, nil
+}
+
+func (s *Storage) GetID(group, song string) (int, error) {
+	const op = "storage.postgresql.GetID"
+
+	var id int
+
+	err := s.db.QueryRow(`
+		SELECT id 
+		FROM songs 
+		WHERE "group" = $1 AND song = $2
+	`, group, song).Scan(&id)
+
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return id, nil
 }
