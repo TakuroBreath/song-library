@@ -8,11 +8,19 @@ import (
 	"github.com/TakuroBreath/song-library/internal/service"
 	"github.com/TakuroBreath/song-library/internal/storage/postgresql"
 	"github.com/TakuroBreath/song-library/pkg/migrator"
+	"github.com/TakuroBreath/song-library/pkg/sl"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"log/slog"
 	"os"
+)
+
+const (
+	envLocal = "local"
+	envDev   = "dev"
+	envProd  = "production"
 )
 
 // @title           Song Library API
@@ -43,26 +51,59 @@ func main() {
 	password := os.Getenv("DB_PASSWORD")
 	dbname := os.Getenv("DB_NAME")
 
+	env := os.Getenv("ENV")
+	log := setupLogger(env)
+
+	log.Info("starting song-library", slog.String("env", env))
+	log.Debug("debug messages are enabled")
+
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
-	migrator.Migrate(user, password, host, port, dbname)
-
-	storage, err := postgresql.NewStorage(psqlInfo)
-	if err != nil {
-		panic(err)
+	if err := migrator.Migrate(user, password, host, port, dbname, log); err != nil {
+		log.Error("failed to apply migrations", sl.Err(err))
+		os.Exit(1)
 	}
 
-	songService := service.NewSongService(storage, os.Getenv("API_URL"))
+	storage, err := postgresql.NewStorage(psqlInfo, log)
+	if err != nil {
+		log.Error("failed to create storage", sl.Err(err))
+		os.Exit(1)
+	}
+
+	songService := service.NewSongService(storage, os.Getenv("API_URL"), log)
 	songHandler := handlers.NewSongHandler(songService)
+
 	router := gin.Default()
+	gin.SetMode(gin.DebugMode)
 
 	routes.SetupSongRoutes(router, songHandler)
 
-	// Swagger documentation route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	if err := router.Run(":8080"); err != nil {
-		panic(err)
+		log.Error("failed to start server", sl.Err(err))
+		os.Exit(1)
 	}
+}
+
+func setupLogger(env string) *slog.Logger {
+	var log *slog.Logger
+
+	switch env {
+	case envLocal:
+		log = slog.New(
+			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		)
+	case envDev:
+		log = slog.New(
+			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		)
+	case envProd:
+		log = slog.New(
+			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		)
+	}
+
+	return log
 }

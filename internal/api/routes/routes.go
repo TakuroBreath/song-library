@@ -6,7 +6,6 @@ import (
 )
 
 func SetupSongRoutes(router *gin.Engine, songHandler *handlers.SongHandler) {
-	// Группа маршрутов для API песен
 	songs := router.Group("/api/songs")
 	{
 		// GET /api/songs - получение списка песен с фильтрацией и пагинацией

@@ -6,23 +6,26 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"log/slog"
 )
 
-func Migrate(user, password, host, port, dbname string) {
+func Migrate(user, password, host, port, dbname string, log *slog.Logger) error {
 	m, err := migrate.New("file://migrations", fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, dbname))
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := m.Up(); err != nil {
 		if errors.Is(err, migrate.ErrNoChange) {
-			fmt.Println("no migrations to apply")
+			log.Info("no changes to apply")
 
-			return
+			return nil
 		}
 
-		panic(err)
+		return err
 	}
 
-	fmt.Println("migrations applied")
+	log.Info("migrations applied")
+
+	return nil
 }

@@ -1,73 +1,119 @@
-Необходимо реализовать следующее
+# Song Library API
 
-1. Выставить rest методы
-Получение данных библиотеки с фильтрацией по всем полям и пагинацией
-Получение текста песни с пагинацией по куплетам
-Удаление песни
-Изменение данных песни
-Добавление новой песни в формате
-ДОБАВИТЬ ОШИБКИ КОТОРЫЕ СОЗДАНЫ В СТОРЕДЖЕ!!!!
+## Overview
 
-JSON
+Song Library is a comprehensive web application designed to manage and retrieve song information. The application provides a robust API for adding, updating, deleting, and retrieving song details with support for pagination and filtering.
 
-{
- "group": "Muse",
- "song": "Supermassive Black Hole"
-}
+## Features
 
+- 🎵 Add songs with detailed information
+- 🔍 Filter and search songs
+- 📄 Pagination support
+- 🌐 External API integration for song details
+- 📊 Swagger documentation
 
-2. При добавлении сделать запрос в АПИ, описанного сваггером
+## Technology Stack
 
-openapi: 3.0.3
-info:
-  title: Music info
-  version: 0.0.1
-paths:
-  /info:
-    get:
-      parameters:
-        - name: group
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: song
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Ok
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SongDetail'
-        '400':
-          description: Bad request
-        '500':
-          description: Internal server error
-components:
-  schemas:
-    SongDetail:
-      required:
-        - releaseDate
-        - text
-        - link
-      type: object
-      properties:
-        releaseDate:
-          type: string
-          example: 16.07.2006
-        text:
-          type: string
-          example: Ooh baby, don't you know I suffer?\nOoh baby, can you hear me moan?\nYou caught me under false pretenses\nHow long before you let me go?\n\nOoh\nYou set my soul alight\nOoh\nYou set my soul alight
-        link:
-          type: string
-          example: https://www.youtube.com/watch?v=Xsp3_a-PMTw
+- **Language**: Go (Golang)
+- **Web Framework**: Gin
+- **Database**: PostgreSQL
+- **ORM**: Standard library `database/sql`
+- **Logging**: `log/slog`
+- **API Documentation**: Swagger
 
+## Prerequisites
 
-# 3. Обогащенную информацию положить в БД postgres (структура БД должна быть создана путем миграций при старте сервиса)
-4. Покрыть код debug- и info-логами
-# 5. Вынести конфигурационные данные в .env-файл 
-6. Сгенерировать сваггер на реализованное АПИ
+- Go 1.23+
+- PostgreSQL
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/TakuroBreath/song-library.git
+cd song-library
+```
+
+### 2. Set Up Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
+
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=song_library
+ENV=local
+API_URL=https://external-song-api.com
+```
+
+### 3. Install Dependencies
+
+```bash
+go mod download
+```
+
+### 4. Database Migration
+
+The application uses an automatic migration system. Ensure PostgreSQL is running and the database is created.
+
+### 5. Run the Application
+
+```bash
+go run cmd/song-library/main.go
+```
+
+## API Endpoints
+
+### Songs
+
+- `GET /api/songs`: Retrieve songs with filtering and pagination
+- `GET /api/songs/verses`: Get song verses with pagination
+- `POST /api/songs`: Add a new song
+- `PUT /api/songs`: Update existing song details
+- `DELETE /api/songs`: Remove a song
+
+## Swagger Documentation
+
+Access Swagger UI at: `http://localhost:8080/swagger/index.html`
+
+## Environment Configurations
+
+The application supports three environments:
+- `local`: Debug logging, text handler
+- `dev`: Debug logging, JSON handler
+- `production`: Info logging, JSON handler
+
+## Error Handling
+
+The application provides detailed error responses and logs for:
+- Database connection issues
+- API integration errors
+- Validation failures
+- Resource not found scenarios
+
+## Logging
+
+Comprehensive logging is implemented using `slog` with different configurations for each environment:
+- Detailed debug logs in local/dev environments
+- Minimal info logs in production
+
+## Security
+
+- Input validation for all endpoints
+- Parameterized database queries to prevent SQL injection
+- Environment-based configuration management
+
+## Performance Considerations
+
+- Pagination support for large datasets
+- Efficient database queries
+- Caching potential for frequently accessed resources
+
+## Acknowledgments
+
+- [Gin Web Framework](https://github.com/gin-gonic/gin)
+- [Swagger](https://swagger.io/)
+- [PostgreSQL](https://www.postgresql.org/)

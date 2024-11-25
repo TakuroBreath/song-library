@@ -2,17 +2,21 @@ package postgresql
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/TakuroBreath/song-library/internal/domain/models"
+	"github.com/TakuroBreath/song-library/internal/storage"
 	_ "github.com/lib/pq"
+	"log/slog"
 	"strings"
 )
 
 type Storage struct {
-	db *sql.DB
+	db  *sql.DB
+	log *slog.Logger
 }
 
-func NewStorage(psqlInfo string) (*Storage, error) {
+func NewStorage(psqlInfo string, log *slog.Logger) (*Storage, error) {
 	const op = "storage.postgresql.NewStorage"
 
 	db, err := sql.Open("postgres", psqlInfo)
@@ -26,25 +30,47 @@ func NewStorage(psqlInfo string) (*Storage, error) {
 	}
 
 	return &Storage{
-		db: db,
+		db:  db,
+		log: log,
 	}, nil
 }
 
 func (s *Storage) AddSong(group, song, releaseDate, text, link string) (int, error) {
 	const op = "storage.postgresql.AddSong"
 
-	var id int
-
+	var exists bool
 	err := s.db.QueryRow(`
-    						INSERT INTO songs ("group", song, release_date, text, link) 
-    						VALUES ($1, $2, $3, $4, $5)
-    						RETURNING id
-							`, group, song, releaseDate, text, link,
-	).Scan(&id)
+        SELECT EXISTS(
+            SELECT 1 FROM songs WHERE "group" = $1 AND song = $2
+        )
+    `, group, song).Scan(&exists)
+
+	if err != nil {
+		return 0, fmt.Errorf("%s: check song existence: %w", op, err)
+	}
+
+	if exists {
+		s.log.Warn("Attempt to add existing song",
+			slog.String("group", group),
+			slog.String("song", song))
+		return 0, storage.ErrSongExists
+	}
+
+	var id int
+	err = s.db.QueryRow(`
+        INSERT INTO songs ("group", song, release_date, text, link) 
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+    `, group, song, releaseDate, text, link).Scan(&id)
 
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
+
+	s.log.Info("Song added successfully",
+		slog.Int("id", id),
+		slog.String("group", group),
+		slog.String("song", song))
 
 	return id, nil
 }
@@ -194,19 +220,29 @@ func (s *Storage) GetFilteredSongs(filters map[string]interface{}, limit, offset
 
 	return songs, nil
 }
-
 func (s *Storage) GetID(group, song string) (int, error) {
 	const op = "storage.postgresql.GetID"
 
 	var id int
 
 	err := s.db.QueryRow(`
-		SELECT id 
-		FROM songs 
-		WHERE "group" = $1 AND song = $2
-	`, group, song).Scan(&id)
+        SELECT id 
+        FROM songs 
+        WHERE "group" = $1 AND song = $2
+    `, group, song).Scan(&id)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		s.log.Warn("Song not found",
+			slog.String("group", group),
+			slog.String("song", song))
+		return 0, storage.ErrSongNotFound
+	}
 
 	if err != nil {
+		s.log.Error("Failed to get song ID",
+			slog.String("group", group),
+			slog.String("song", song),
+			slog.Any("error", err))
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
